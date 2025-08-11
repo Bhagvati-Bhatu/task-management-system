@@ -1,0 +1,120 @@
+:root {
+    --primary-color: #0d6efd;
+    --success-color: #198754;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+}
+
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.task-card {
+    transition: all 0.3s ease;
+    border-left: 4px solid var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.task-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
+}
+
+.task-card.completed {
+    opacity: 0.7;
+    border-left-color: var(--success-color);
+}
+
+.task-card.work {
+    border-left-color: var(--primary-color);
+}
+
+.task-card.personal {
+    border-left-color: var(--success-color);
+}
+
+.task-card.urgent {
+    border-left-color: var(--danger-color);
+}
+
+.task-card.shopping {
+    border-left-color: var(--warning-color);
+}
+
+.task-title {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.task-title.completed {
+    text-decoration: line-through;
+    color: #6c757d;
+}
+
+.task-description {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.task-meta {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.category-badge {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+}
+
+.btn-action {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    margin-left: 0.25rem;
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-out {
+    animation: slideOut 0.3s ease-out;
+}
+
+@keyframes slideOut {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(-100%); }
+}
+
+.progress {
+    height: 10px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #6c757d;
+}
+
+.empty-state i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    opacity: 0.3;
+}
+
+@media (max-width: 768px) {
+    .task-card .row {
+        flex-direction: column;
+    }
+    
+    .task-actions {
+        margin-top: 1rem;
+        text-align: center;
+    }
+}

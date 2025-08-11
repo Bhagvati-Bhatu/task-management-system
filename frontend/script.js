@@ -1,22 +1,24 @@
 class TaskManager {
     constructor() {
-        this.tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+        this.tasks = [];
         this.currentFilter = 'all';
         this.editingTaskId = null;
+        this.apiUrl = 'http://localhost:3001/api'; // Backend API URL
         this.init();
     }
 
-    init() {
+    async init() {
         this.bindEvents();
+        await this.loadTasks();
         this.render();
         this.updateProgress();
     }
 
     bindEvents() {
         // Add task form
-        document.getElementById('taskForm').addEventListener('submit', (e) => {
+        document.getElementById('taskForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            this.addTask();
+            await this.addTask();
         });
 
         // Filter buttons
@@ -27,64 +29,136 @@ class TaskManager {
         });
 
         // Edit modal save button
-        document.getElementById('saveChanges').addEventListener('click', () => {
-            this.saveEditedTask();
+        document.getElementById('saveChanges').addEventListener('click', async () => {
+            await this.saveEditedTask();
         });
     }
 
-    addTask() {
+    // Load tasks from backend
+    async loadTasks() {
+        try {
+            const response = await fetch(`${this.apiUrl}/tasks`);
+            const result = await response.json();
+            
+            if (result.success) {
+                this.tasks = result.data;
+            } else {
+                this.showError('Failed to load tasks');
+            }
+        } catch (error) {
+            console.error('Error loading tasks:', error);
+            this.showError('Failed to connect to server');
+        }
+    }
+
+    async addTask() {
         const title = document.getElementById('taskTitle').value.trim();
         const description = document.getElementById('taskDescription').value.trim();
         const category = document.getElementById('taskCategory').value;
 
         if (!title) return;
 
-        const task = {
-            id: Date.now(),
-            title,
-            description,
-            category,
-            completed: false,
-            createdAt: new Date().toISOString()
-        };
+        try {
+            const response = await fetch(`${this.apiUrl}/tasks`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title,
+                    description,
+                    category
+                })
+            });
 
-        this.tasks.unshift(task);
-        this.saveToStorage();
-        this.render();
-        this.updateProgress();
-        
-        // Reset form
-        document.getElementById('taskForm').reset();
-    }
-
-    deleteTask(id) {
-        const taskElement = document.querySelector(`[data-task-id="${id}"]`);
-        taskElement.classList.add('slide-out');
-        
-        setTimeout(() => {
-            this.tasks = this.tasks.filter(task => task.id !== id);
-            this.saveToStorage();
-            this.render();
-            this.updateProgress();
-        }, 300);
-    }
-
-    toggleTask(id) {
-        const task = this.tasks.find(task => task.id === id);
-        if (task) {
-            task.completed = !task.completed;
-            this.saveToStorage();
-            this.render();
-            this.updateProgress();
+            const result = await response.json();
+            
+            if (result.success) {
+                await this.loadTasks(); // Reload tasks from server
+                this.render();
+                this.updateProgress();
+                
+                // Reset form
+                document.getElementById('taskForm').reset();
+                this.showSuccess('Task added successfully!');
+            } else {
+                this.showError(result.error || 'Failed to add task');
+            }
+        } catch (error) {
+            console.error('Error adding task:', error);
+            this.showError('Failed to add task');
         }
     }
 
-    editTask(id) {
-        const task = this.tasks.find(task => task.id === id);
+    async deleteTask(id) {
+        if (!confirm('Are you sure you want to delete this task?')) {
+            return;
+        }
+
+        const taskElement = document.querySelector(`[data-task-id="${id}"]`);
+        taskElement.classList.add('slide-out');
+        
+        try {
+            const response = await fetch(`${this.apiUrl}/tasks/${id}`, {
+                method: 'DELETE'
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                setTimeout(async () => {
+                    await this.loadTasks();
+                    this.render();
+                    this.updateProgress();
+                }, 300);
+                this.showSuccess('Task deleted successfully!');
+            } else {
+                taskElement.classList.remove('slide-out');
+                this.showError(result.error || 'Failed to delete task');
+            }
+        } catch (error) {
+            taskElement.classList.remove('slide-out');
+            console.error('Error deleting task:', error);
+            this.showError('Failed to delete task');
+        }
+    }
+
+    async toggleTask(id) {
+        const task = this.tasks.find(task => task._id === id);
+        if (!task) return;
+
+        try {
+            const response = await fetch(`${this.apiUrl}/tasks/${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    completed: !task.completed
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                await this.loadTasks();
+                this.render();
+                this.updateProgress();
+            } else {
+                this.showError(result.error || 'Failed to update task');
+            }
+        } catch (error) {
+            console.error('Error toggling task:', error);
+            this.showError('Failed to update task');
+        }
+    }
+
+    async editTask(id) {
+        const task = this.tasks.find(task => task._id === id);
         if (task) {
             this.editingTaskId = id;
             document.getElementById('editTitle').value = task.title;
-            document.getElementById('editDescription').value = task.description;
+            document.getElementById('editDescription').value = task.description || '';
             document.getElementById('editCategory').value = task.category;
             
             const modal = new bootstrap.Modal(document.getElementById('editModal'));
@@ -92,18 +166,46 @@ class TaskManager {
         }
     }
 
-    saveEditedTask() {
-        const task = this.tasks.find(task => task.id === this.editingTaskId);
-        if (task) {
-            task.title = document.getElementById('editTitle').value.trim();
-            task.description = document.getElementById('editDescription').value.trim();
-            task.category = document.getElementById('editCategory').value;
+    async saveEditedTask() {
+        if (!this.editingTaskId) return;
+
+        const title = document.getElementById('editTitle').value.trim();
+        const description = document.getElementById('editDescription').value.trim();
+        const category = document.getElementById('editCategory').value;
+
+        if (!title) {
+            this.showError('Task title is required');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.apiUrl}/tasks/${this.editingTaskId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title,
+                    description,
+                    category
+                })
+            });
+
+            const result = await response.json();
             
-            this.saveToStorage();
-            this.render();
-            
-            const modal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
-            modal.hide();
+            if (result.success) {
+                await this.loadTasks();
+                this.render();
+                
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
+                modal.hide();
+                this.showSuccess('Task updated successfully!');
+            } else {
+                this.showError(result.error || 'Failed to update task');
+            }
+        } catch (error) {
+            console.error('Error updating task:', error);
+            this.showError('Failed to update task');
         }
     }
 
@@ -146,13 +248,13 @@ class TaskManager {
         }
 
         container.innerHTML = filteredTasks.map(task => `
-            <div class="card task-card ${task.category} ${task.completed ? 'completed' : ''} fade-in" data-task-id="${task.id}">
+            <div class="card task-card ${task.category} ${task.completed ? 'completed' : ''} fade-in" data-task-id="${task._id}">
                 <div class="card-body">
                     <div class="row align-items-center">
                         <div class="col-md-1">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" ${task.completed ? 'checked' : ''} 
-                                       onchange="taskManager.toggleTask(${task.id})">
+                                       onchange="taskManager.toggleTask('${task._id}')">
                             </div>
                         </div>
                         <div class="col-md-8">
@@ -164,10 +266,10 @@ class TaskManager {
                             </div>
                         </div>
                         <div class="col-md-3 task-actions">
-                            <button class="btn btn-sm btn-outline-primary btn-action" onclick="taskManager.editTask(${task.id})">
+                            <button class="btn btn-sm btn-outline-primary btn-action" onclick="taskManager.editTask('${task._id}')">
                                 <i class="fas fa-edit"></i> Edit
                             </button>
-                            <button class="btn btn-sm btn-outline-danger btn-action" onclick="taskManager.deleteTask(${task.id})">
+                            <button class="btn btn-sm btn-outline-danger btn-action" onclick="taskManager.deleteTask('${task._id}')">
                                 <i class="fas fa-trash"></i> Delete
                             </button>
                         </div>
@@ -198,10 +300,57 @@ class TaskManager {
         }
     }
 
-    saveToStorage() {
-        localStorage.setItem('tasks', JSON.stringify(this.tasks));
+    showSuccess(message) {
+        this.showToast(message, 'success');
+    }
+
+    showError(message) {
+        this.showToast(message, 'error');
+    }
+
+    showToast(message, type = 'info') {
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'} toast-message`;
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+            min-width: 250px;
+            padding: 12px 20px;
+            border-radius: 5px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideInRight 0.3s ease;
+        `;
+        toast.textContent = message;
+        
+        document.body.appendChild(toast);
+        
+        // Remove toast after 3 seconds
+        setTimeout(() => {
+            toast.style.animation = 'slideOutRight 0.3s ease';
+            setTimeout(() => {
+                document.body.removeChild(toast);
+            }, 300);
+        }, 3000);
     }
 }
 
 // Initialize the task manager
 const taskManager = new TaskManager();
+
+// Add CSS for toast animations
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    
+    @keyframes slideOutRight {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+    }
+`;
+document.head.appendChild(style);
